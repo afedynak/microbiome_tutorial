@@ -1,0 +1,79 @@
+---
+title: "Microbiome Tutorial - Preprocessing (Negative Controls)"
+author: "Amber Fedynak"
+date: "2025-06-01"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+# Load required packages
+library(dplyr)
+library(knitr)
+library(tidyr)
+library(ggplot2)
+library(readr)
+library(tidyverse)
+
+
+library(dplyr)
+library(knitr)
+
+# Read OTU table (replace with your file path)
+otu_table <- read.csv("/Users/admin/Desktop/UManitoba/infant_gut_mb_data/WINNIMOM_infant_gut_OTU_rawcounts_2024-12-01.csv", 
+                      row.names = 1, check.names = FALSE)
+
+# Convert all data to numeric
+otu_table[] <- lapply(otu_table, function(x) as.numeric(as.character(x)))
+
+# View first few rows to confirm
+head(otu_table)
+
+# Columns representing negative controls
+neg_ctrl_cols <- c("Neg_ctrl_1", "Neg_ctrl_2", "Neg_ctrl_3")
+
+# Calculate total counts per OTU in negative controls
+otu_table$neg_ctrl_sum <- rowSums(otu_table[, neg_ctrl_cols])
+
+# Calculate total counts per OTU across all samples
+otu_table$overall_sum <- rowSums(otu_table)
+
+# Calculate proportion of counts in negative controls vs overall counts
+otu_table$neg_ctrl_prop <- otu_table$neg_ctrl_sum / otu_table$overall_sum
+
+# Filter OTUs that have any counts in negative controls
+contaminants <- otu_table %>%
+  filter(neg_ctrl_sum > 0) %>%
+  arrange(desc(neg_ctrl_prop))
+
+# Show top OTUs by proportion of reads in negative controls
+kable(head(contaminants, 20), caption = "Top OTUs in Negative Controls")
+
+# Define threshold for removal: e.g., > 10% of reads in negative controls
+threshold <- 0.1
+
+# Identify OTUs flagged for removal
+otus_to_remove <- rownames(contaminants)[contaminants$neg_ctrl_prop > threshold]
+
+# Print OTUs flagged for removal
+print("OTUs flagged for removal (proportion > 10% in negative controls):")
+print(otus_to_remove)
+
+# Calculate and print number of OTUs flagged for removal
+num_flagged_otus <- length(otus_to_remove)
+cat("Number of OTUs flagged for removal:", num_flagged_otus, "\n")
+
+# Filter OTU table to remove flagged OTUs
+filtered_otu_table <- otu_table[!(rownames(otu_table) %in% otus_to_remove), ]
+
+# Optional: Remove the helper columns before saving
+filtered_otu_table_clean <- filtered_otu_table[, !(colnames(filtered_otu_table) %in% c("neg_ctrl_sum", "overall_sum", "neg_ctrl_prop"))]
+
+# Save filtered OTU table to CSV (update path if needed)
+write.csv(filtered_otu_table_clean, "filtered_otu_table.csv")
+
+
+```

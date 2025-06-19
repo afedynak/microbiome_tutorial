@@ -1,0 +1,62 @@
+---
+title: "Microbiome Tutorial - Preprocessing (Replicates)"
+author: "Amber Fedynak"
+date: "2025-06-01"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+# Load required packages
+library(dplyr)
+library(knitr)
+library(tidyr)
+library(ggplot2)
+library(readr)
+library(tidyverse)
+
+# Load OTU table, convert counts to numeric
+otu_table <- read.csv("/Users/admin/Desktop/UManitoba/infant_gut_mb_data/WINNIMOM_infant_gut_OTU_rawcounts_2024-12-01.csv", row.names = 1, check.names = FALSE)
+otu_table[] <- lapply(otu_table, function(x) as.numeric(as.character(x)))
+
+replicate_cols <- c("Stool_pool_1", "Stool_pool_2", "Stool_pool_3")
+
+# Convert counts to presence/absence (1 if > 0, else 0) for all OTUs across replicates
+otu_table_presence <- otu_table %>%
+  mutate(across(all_of(replicate_cols), ~ ifelse(. > 0, 1, 0)))
+
+# Now you can add a column for the sum of presence across replicates per OTU
+otu_table_presence <- otu_table_presence %>%
+  mutate(presence_sum = rowSums(across(all_of(replicate_cols))))
+
+# Filter OTUs detected in all replicates
+consistent_otus <- otu_table_presence %>% filter(presence_sum == length(replicate_cols))
+
+# Filter OTUs missing in any replicate
+inconsistent_otus <- otu_table_presence %>% filter(presence_sum < length(replicate_cols))
+
+# Optional: view results
+print(paste("Number of OTUs consistently detected in all replicates:", nrow(consistent_otus)))
+print(paste("Number of OTUs inconsistently detected:", nrow(inconsistent_otus)))
+
+# Show inconsistent OTUs with counts in replicate pools
+kable(inconsistent_otus[, c(replicate_cols, "presence_sum")], 
+      caption = paste("OTUs Not Consistently Detected Across Replicate Pools (", nrow(inconsistent_otus), " OTUs)", sep = ""))
+
+# Set threshold for removal: e.g., remove OTUs not detected in all replicates
+otus_to_remove <- rownames(inconsistent_otus)
+
+# Print flagged OTUs
+print(otus_to_remove)
+
+# Optionally, create a filtered OTU table removing inconsistent OTUs
+filtered_otu_table <- otu_table[!(rownames(otu_table) %in% otus_to_remove), ]
+
+# Save filtered OTU table without helper columns
+
+
+```

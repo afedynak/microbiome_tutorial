@@ -1,0 +1,123 @@
+---
+title: "Microbiome Tutorial - Summary Demographics"
+author: "Amber Fedynak"
+date: "2025-06-01"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+# Load required packages
+library(dplyr)
+library(knitr)
+library(tidyr)
+library(ggplot2)
+library(readr)
+
+df <- read_csv("/Users/admin/Desktop/UManitoba/participant_data/WINNIMOM_baseline_demographics_2024-12-01.csv")
+
+library(dplyr)
+library(tidyr)
+library(stringr)
+
+# Make sure your factors are set
+df <- df %>%
+  mutate(
+    del_mode = factor(del_mode, levels = c("vaginal", "cesarian")),
+    maternal_ethnicity = factor(maternal_ethnicity),
+    infant_sex = factor(infant_sex),
+    has_inf_gut_mb_data = factor(has_inf_gut_mb_data)
+  )
+
+# Summarize continuous variables function
+summarize_continuous <- function(data, var, group) {
+  res <- data %>%
+    group_by(!!sym(group)) %>%
+    summarise(
+      Mean = mean(.data[[var]], na.rm = TRUE),
+      SD = sd(.data[[var]], na.rm = TRUE),
+      Min = min(.data[[var]], na.rm = TRUE),
+      Max = max(.data[[var]], na.rm = TRUE),
+      .groups = 'drop'
+    ) %>%
+    mutate(Summary = sprintf("%.2f ± %.2f; %.2f-%.2f", Mean, SD, Min, Max)) %>%
+    select(!!sym(group), Summary)
+
+  overall <- data %>%
+    summarise(
+      Mean = mean(.data[[var]], na.rm = TRUE),
+      SD = sd(.data[[var]], na.rm = TRUE),
+      Min = min(.data[[var]], na.rm = TRUE),
+      Max = max(.data[[var]], na.rm = TRUE)
+    ) %>%
+    mutate(Summary = sprintf("%.2f ± %.2f; %.2f-%.2f", Mean, SD, Min, Max)) %>%
+    pull(Summary)
+
+  p <- t.test(data[[var]] ~ data[[group]])$p.value
+
+  tibble(
+    Variable = var,
+    Overall = overall,
+    Vaginal = res$Summary[res[[group]] == "vaginal"],
+    Cesarian = res$Summary[res[[group]] == "cesarian"],
+    P_value = ifelse(p < 0.001, "<0.001", sprintf("%.3f", p))
+  )
+}
+
+# Summarize categorical variables function
+summarize_categorical <- function(data, var, group) {
+  tab <- table(data[[var]], data[[group]])
+  prop <- prop.table(tab, 2) * 100
+  levels <- rownames(tab)
+
+  out <- lapply(levels, function(lvl) {
+    vaginal_n <- tab[lvl, "vaginal"]
+    cesarian_n <- tab[lvl, "cesarian"]
+    vaginal_p <- round(prop[lvl, "vaginal"], 1)
+    cesarian_p <- round(prop[lvl, "cesarian"], 1)
+    overall_n <- sum(data[[var]] == lvl)
+    overall_p <- round(100 * overall_n / nrow(data), 1)
+
+    # Use Fisher's exact test if any cell count <5, otherwise chi-square
+    if(any(tab < 5)) {
+      p <- fisher.test(tab)$p.value
+    } else {
+      p <- chisq.test(tab)$p.value
+    }
+
+    tibble(
+      Variable = paste0(var, " = ", lvl),
+      Overall = paste0(overall_n, " (", overall_p, "%)"),
+      Vaginal = paste0(vaginal_n, " (", vaginal_p, "%)"),
+      Cesarian = paste0(cesarian_n, " (", cesarian_p, "%)"),
+      P_value = ifelse(p < 0.001, "<0.001", sprintf("%.3f", p))
+    )
+  })
+
+  bind_rows(out)
+}
+
+# Variables to summarize
+cont_vars <- c("maternal_age_enrl", "maternal_BMI", "infant_birth_weight_kg", "gestational_age_wk")
+cat_vars <- c("maternal_ethnicity", "infant_sex", "has_inf_gut_mb_data")
+
+# Run summaries
+summary_cont <- bind_rows(lapply(cont_vars, summarize_continuous, data = df, group = "del_mode"))
+summary_cat <- bind_rows(lapply(cat_vars, summarize_categorical, data = df, group = "del_mode"))
+
+# Combine into one summary table
+summary_table <- bind_rows(summary_cont, summary_cat)
+
+# Print nicely
+print(summary_table)
+
+
+```
+
+
+##
+Result:
+Maternal age at enrollment and infant birth weight differ significantly between vaginal and cesarean delivery groups (p-values < 0.001). These continuous variables show a statistically significant difference in their distributions between the two delivery modes.

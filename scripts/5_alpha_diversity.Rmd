@@ -1,0 +1,82 @@
+---
+title: "Microbiome Tutorial - Alpha Diversity"
+author: "Amber Fedynak"
+date: "2025-06-01"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+# Load required packages
+library(dplyr)
+library(knitr)
+library(tidyr)
+library(ggplot2)
+library(readr)
+library(tidyverse)
+library(vegan)
+
+# Load OTU data
+otu_df <- read.csv("/Users/admin/Desktop/UManitoba/infant_otu_proportions_cleaned.csv", row.names = 1, check.names = FALSE)
+
+#otu_df <- read.csv("/Users/admin/Desktop/UManitoba/filtered_otu_table_f#ter_replicate_check.csv", row.names = 1, check.names = FALSE)
+
+# Transpose to samples as rows
+otu_df <- as.data.frame(t(otu_df))
+
+# Load metadata
+metadata <- read.csv("/Users/admin/Desktop/UManitoba/participant_data/WINNIMOM_baseline_demographics_2024-12-01.csv")  # make sure sample_id column matches colnames in OTU
+
+otu_df$infantID <- rownames(otu_df)
+
+otu_df <- otu_df %>%
+  relocate(infantID)
+
+otu_df %>%
+  mutate(across(-infantID, ~ as.numeric(.)))
+
+# Merge metadata with OTU data
+merged_data <- merge(metadata, otu_df, by = "infantID")
+
+metadata_cols <- c("maternalID", "visit", "enrl_date", "has_inf_gut_mb_data", "visit_date", "maternal_age_enrl", "maternal_ethnicity", "maternal_BMI", "infant_sex", "infant_birth_weight_kg", "gestational_age_wk") # add other metadata columns as needed
+otu_counts <- merged_data %>%
+  select(-all_of(metadata_cols)) 
+
+otu_df_numeric <- otu_df %>%
+  select(-infantID) %>%                # remove ID column
+  mutate(across(everything(), as.numeric))  # convert all remaining columns to numeric
+
+otu_df_numeric[otu_df_numeric < 0] <- 0
+
+# Check structure
+str(otu_df_numeric)
+
+# Calculate Shannon diversity index
+otu_df_numeric$shannon_diversity <- diversity(otu_df_numeric, index = "shannon")
+
+shannon_df <- data.frame(
+  infantID = rownames(otu_df_numeric),
+  shannon_diversity = otu_df_numeric$shannon_diversity
+)
+
+merged_metadata <- merge(metadata, shannon_df, by = "infantID")
+
+
+# Plot Shannon diversity by delivery mode
+pdf("alpha_diversity.pdf")
+ggplot(merged_metadata, aes(x = del_mode, y = shannon_diversity, fill = del_mode)) +
+  geom_boxplot(alpha = 0.6) +
+  geom_jitter(width = 0.2, alpha = 0.7) +
+  labs(title = "Shannon Alpha Diversity by Delivery Mode",
+       x = "Delivery Mode", y = "Shannon Diversity Index") +
+  theme_minimal()
+dev.off()
+
+# Statistical test: Wilcoxon rank-sum
+wilcox.test(shannon_diversity ~ del_mode, data = merged_metadata)
+
+```

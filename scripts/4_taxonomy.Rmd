@@ -1,0 +1,69 @@
+---
+title: "Microbiome Tutorial - Taxonomic Distribution"
+author: "Amber Fedynak"
+date: "2025-06-01"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+# Load required packages
+library(dplyr)
+library(knitr)
+library(tidyr)
+library(ggplot2)
+library(readr)
+library(tidyverse)
+
+# Load OTU table, convert counts to numeric
+otu_table <- read.csv("/Users/admin/Desktop/UManitoba/infant_gut_mb_data/WINNIMOM_infant_gut_OTU_rawcounts_2024-12-01.csv", row.names = 1, check.names = FALSE)
+otu_table[] <- lapply(otu_table, function(x) as.numeric(as.character(x)))
+
+# Assuming otu_table is loaded and numeric, without the summary columns
+# Select only infant stool samples columns (those starting with "inf_")
+infant_samples <- grep("^inf_", colnames(otu_table), value = TRUE)
+
+# Subset the OTU table for infant samples only
+infant_otu_table <- otu_table[, infant_samples]
+
+# Calculate proportions per sample (column-wise normalization)
+infant_otu_props <- sweep(infant_otu_table, 2, colSums(infant_otu_table), FUN = "/")
+
+# Convert to long format for ggplot
+otu_long <- as.data.frame(infant_otu_props) %>%
+  mutate(OTU = rownames(infant_otu_props)) %>%
+  pivot_longer(-OTU, names_to = "Sample", values_to = "Proportion")
+
+# Plot stacked bar chart
+pdf("/Users/admin/Desktop/UManitoba/stacked_bar.pdf", width=12)
+ggplot(otu_long, aes(x = Sample, y = Proportion, fill = OTU)) +
+  geom_bar(stat = "identity") +
+  labs(title = "Stacked Bar Chart of OTU Proportions Across Infant Stool Samples",
+       x = "Infant Stool Sample",
+       y = "Proportion") +
+  theme(axis.text.x = element_blank(),  
+        axis.ticks.x = element_blank()) +
+  guides(fill = guide_legend(ncol = 1))
+dev.off()
+
+otu_sums <- rowSums(otu_table[, infant_samples])
+
+most_abundant_otu <- names(otu_sums)[which.max(otu_sums)]
+most_abundant_count <- max(otu_sums)
+
+# Print the result
+cat("The most abundant OTU is:", most_abundant_otu, "with a total count of", most_abundant_count, "\n")
+
+# Remove Pseudomonadales OTU(s) - as determined by previous exercise
+# If OTU taxonomy is in rownames, filter out rows containing "Pseudomonadales"
+cleaned_otu_props <- infant_otu_props[!grepl("Pseudomonadales", rownames(infant_otu_props)), ]
+
+# Save cleaned proportional data to CSV
+write.csv(cleaned_otu_props, 
+          "/Users/admin/Desktop/UManitoba/infant_otu_proportions_cleaned.csv", 
+          row.names = TRUE)
+
+```
